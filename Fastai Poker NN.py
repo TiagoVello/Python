@@ -7,7 +7,6 @@ import fastai
 from fastai.metrics import *
 from fastai.tabular import *
 import torch
-from poker import Stringify
                 
                 
 # Baixando os dados e importando-os para um Data Frame
