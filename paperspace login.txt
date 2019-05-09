@@ -7,7 +7,7 @@ jupyter notebook --no-browser --port=8889 --NotebookApp.allow_remote_access=True
 
 
 SSH into machine and redirect local localhost to machine localhost
-ssh -N -L localhost:8888:localhost:8889 paperspace@184.105.157.31
+ssh -N -L localhost:8888:localhost:8889 paperspace@184.105.3.32
 
 transfer documents
-scp -rp C:\Users\TiagoVello\Downloads\to_paperspace\* paperspace@184.105.157.31:/home/paperspace/downloads
+scp -rp C:\Users\TiagoVello\Downloads\to_paperspace\* paperspace@184.105.3.32:/home/paperspace/downloads
