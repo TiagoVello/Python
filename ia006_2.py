@@ -63,7 +63,6 @@ def standerdize (X):
 
 X = standerdize(two_moons.iloc[:,0:2])
 y = two_moons.iloc[:,2]
-
     
 # 2. Compute the mean vector and the mean vector per class
 mean = np.mean(X).values.reshape(2,1)
@@ -161,11 +160,12 @@ plt.title('Curva F1 Fisher')
 plt.ylabel('F1')
 plt.xlabel('Threshold')
 plt.show()
-    
+   
+
 class RegressaoLogistica:
-    def __init__(self, bias = False, lr = 0.01, epochs = 10):
+    def __init__(self, bias = False, lr = 0.01, epochs = 10, w=None):
         self.bias = bias
-        self.w = None
+        self.w = w
         self.lr = lr
         self.epochs = epochs
         
@@ -179,7 +179,8 @@ class RegressaoLogistica:
             b[:,1:] = x
             x = b
         # Inicia os pesos
-        self.w = np.random.normal(0,1,size = x[0].shape)
+        if w.all == None:
+            self.w = np.random.normal(0,1,size = x[0].shape)
         # Loop de treinamento
         for _ in range(self.epochs):
             grad = np.zeros(self.w.shape)
@@ -252,7 +253,7 @@ x = standerdize(vehicle.iloc[:,:-1])
 y = vehicle.iloc[:,-1]
 
 # 2. Split 
-x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=0.2, random_state=42)
+x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=0.05, random_state=42)
 x_train = x_train.reset_index()
 y_train = y_train.reset_index()
 x_test = x_test.reset_index()
@@ -262,21 +263,32 @@ del y_train['index']
 del x_test['index']
 del y_test['index']
 
-
 class MultilabelLogisticRegression:
-    def __init__(self,x,y):
+    def __init__(self,x,y,test_size=0.05):
         self.models = []
         self.predictions = []
         self.combination = []
         self.labels = np.unique(y)
+        self.x = x
+        self.y = y
+        x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=0.05, random_state=42)
+        self.x_train = x_train.reset_index()
+        self.y_train = y_train.reset_index()
+        self.x_test = x_test.reset_index()
+        self.y_test = y_test.reset_index()
+        del self.x_train['index']
+        del self.y_train['index']
+        del self.x_test['index']
+        del self.y_test['index']
         for i in range(len(self.labels)-1):
             for j in range(i+1,len(self.labels)):
                 self.combination.append([self.labels[i],self.labels[j]])
+        self.w = [None]*len(self.combination)
         self.votes = None
     
-    def masked_by_label(self,label1,label2,x,y):
-        x_copy = x.copy()
-        y_copy = y.copy()
+    def masked_by_label(self,label1,label2):
+        x_copy = self.x_train.copy()
+        y_copy = self.y_train.copy()
         i = 0
         while len(y_copy)<=i:
             if y_copy.iloc[i,0] != label1 and y_copy.iloc[i,0] != label2:
@@ -294,14 +306,17 @@ class MultilabelLogisticRegression:
                 y_copy.iloc[i,0] = 1
         return x_copy, y_copy
 
-    def fit(self,x,y,bias=True,lr=0.01,epochs=5000):
+    def fit(self,bias=True,lr=0.01,epochs=5000):
+        self.models = [None]*len(self.combination)
         for i,(label1,label2) in enumerate(self.combination):
-            self.models.append(RegressaoLogistica(bias=bias,lr=lr,epochs=epochs))
-            x_masked, y_masked = self.masked_by_label(label1,label2,x,y)
+            self.models[i] = RegressaoLogistica(bias=bias,lr=lr,epochs=epochs,w=self.w)
+            x_masked, y_masked = self.masked_by_label(label1,label2)
             self.models[i].fit(x_masked,y_masked['Class'])
+            self.w[i] = self.models[i].w
             print('.')
-        
+    
     def pred(self,x):
+        self.predictions = []
         self.votes = pd.DataFrame(np.zeros((len(x),len(self.labels))),columns=self.labels)
         for sample in range(len(x)):
             for i, model in enumerate(self.models):
@@ -317,17 +332,62 @@ class MultilabelLogisticRegression:
                 elif self.votes[label][sample] == max_score:
                     max_label = label + ' ' + max_label
             self.predictions.append(max_label)
-        return self.predictions
+            
+    def train(self,lr=1,epochs=1000,lr_mult=1/2,n_fit=5,w=None):
+        if w == None:
+            w = [None]*len(self.models)
+        for number_of_treinaments in range(n_fit):
+            self.fit(lr=lr,epochs=epochs,w=w)
+            self.pred(self.x_test)
+            self.accuracy(self.y_test)
+            for i in range(len(self.models)):
+                w[i] = self.models[i].w
+
+    def accuracy(self,y_test):
+        acc = 0
+        for i in range(len(y_test)):
+            if y_test['Class'][i] == self.predictions[i]:
+                acc += 1
+        print(acc/len(y_test))
 
 a = MultilabelLogisticRegression(x,y)
-a.fit(x_train,y_train)
+a.fit(lr=2000,epochs=2000)
 a.pred(x_test)
+a.accuracy(y_test)
+a.pred(x_train)
+a.predictions
+a.accuracy(y_train)
+from sklearn.metrics import confusion_matrix
+confusion_matrix(y_test,a)
 
-pred = a.pred(x_test)
-acc = 0
-for i in range(len(y_test)):
-    if y_test['Class'][i] == pred[i]:
-        acc += 1
-print(acc/len(x_test))
+def euclidian(x1,x2):
+    distance = 0
+    for i in range(len(x1)):
+        distance += pow((x1[i]-x2[i]),2)
+    return np.sqrt(distance)
+
+class KNearestNeighbors:
+    def __init__(self, k):
+        self.k = k
+        self.x_train = None
+        self.prediction = []
+        self.distance = []
+        
+    def fit(self, x_train, y_train):
+        self.x_train = x_train
+        self.y_train = y_train
+    
+    def predict(self, x):
+        for i in range(len(self.x_train)):
+            self.distance.append(euclidian(list(x_train.iloc[i,:]),list(x)))
+        self.distance
+        for i in range(k):
+            classes.append()
+            
+'98' 
+       
+def temp2int (threshold):
+    temp = int(threshold)
+    return ((10*temp+600)*65535)/3300
 
 
